@@ -7,11 +7,12 @@ import { WHATSAPP_AUTH_UNSTABLE_CODE } from "./auth-store.js";
 import { whatsappSetupPlugin } from "./channel.setup.js";
 import { checkWhatsAppHeartbeatReady } from "./heartbeat.js";
 import type { OpenClawConfig } from "./runtime-api.js";
-import { finalizeWhatsAppSetup } from "./setup-finalize.js";
+import { finalizeWhatsAppSetup, WHATSAPP_NEXT_STEPS_NOTE_TITLE } from "./setup-finalize.js";
 import {
   createWhatsAppAllowlistModeInput,
   expectWhatsAppDefaultAccountAccessNote,
   createWhatsAppLinkingHarness,
+  createWhatsAppWorkAccountConfig,
   createWhatsAppOwnerAllowlistHarness,
   createWhatsAppPersonalPhoneHarness,
   createWhatsAppRootAllowFromConfig,
@@ -432,6 +433,47 @@ describe("whatsapp setup wizard", () => {
       beforeCredentialPersistence: undefined,
     });
     expectWhatsAppNextStepsNote(harness);
+  });
+
+  it("includes --account in the next-steps command for a named account link", async () => {
+    // Regression: a named (non-default) account link must surface --account in
+    // the displayed `message send` command so verification sends from the
+    // identity the user just linked, not defaultAccount.
+    hoisted.hasWebCredsSync.mockReturnValue(false);
+    const harness = createWhatsAppLinkingHarness(createQueuedWizardPrompter);
+
+    const result = await finalizeWhatsAppSetup({
+      cfg: createWhatsAppWorkAccountConfig({ defaultAccount: "work" }) as OpenClawConfig,
+      accountId: "work",
+      forceAllowFrom: false,
+      prompter: harness.prompter,
+      runtime: createRuntime(),
+    });
+
+    expect(hoisted.loginWeb).toHaveBeenCalledWith(false, undefined, createRuntime(), "work", {
+      beforeCredentialPersistence: undefined,
+    });
+    expect(harness.note).toHaveBeenCalledWith(
+      expect.stringContaining("--account work"),
+      WHATSAPP_NEXT_STEPS_NOTE_TITLE,
+    );
+    expect(result.cfg).toBeDefined();
+  });
+
+  it("omits --account in the next-steps command for the default account", async () => {
+    // The default account must NOT get a redundant --account default flag.
+    hoisted.hasWebCredsSync.mockReturnValue(false);
+    const harness = createWhatsAppLinkingHarness(createQueuedWizardPrompter);
+
+    await runConfigureWithHarness({ harness });
+
+    expectWhatsAppNextStepsNote(harness);
+    // The command should contain the channel flag but NOT --account.
+    const noteCall = harness.note.mock.calls.find(
+      (args) => args[1] === WHATSAPP_NEXT_STEPS_NOTE_TITLE,
+    );
+    expect(noteCall?.[0]).toContain("openclaw message send --channel whatsapp");
+    expect(noteCall?.[0]).not.toContain("--account");
   });
 
   it("skips relink note when already linked and relink is declined", async () => {

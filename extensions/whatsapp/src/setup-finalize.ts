@@ -492,8 +492,15 @@ export async function finalizeWhatsAppSetup(params: {
   if (linkSucceeded) {
     const finalAccount = resolveWhatsAppAccount({ cfg: next, accountId });
     const finalPolicy = finalAccount.dmPolicy ?? "pairing";
+    // Include --account when a named (non-default) account was linked, so the
+    // verification command sends from the identity the user just set up rather
+    // than falling back to defaultAccount in a multi-account config.
+    const accountFlag =
+      finalAccount.accountId === DEFAULT_ACCOUNT_ID
+        ? ""
+        : ` --account ${finalAccount.accountId}`;
     const sendCommand = formatCliCommand(
-      "openclaw message send --channel whatsapp --target +15551234567 --message hi",
+      `openclaw message send --channel whatsapp${accountFlag} --target +15551234567 --message hi`,
     );
     const inboundLine = describeWhatsAppInboundLine(finalPolicy);
     await params.prompter.note(
